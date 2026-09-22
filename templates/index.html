@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clip Bay — AI Clip Cutter</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg: #121212;
+    --panel: #1a1a1a;
+    --line: #2c2c2c;
+    --text: #e8e6e1;
+    --dim: #8a8880;
+    --tally: #ff4d2e;
+    --tally-dim: #7a2a1c;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+  }
+
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 40px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 20px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .tally-light {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--tally-dim);
+    box-shadow: 0 0 0 3px rgba(255,77,46,0.08);
+  }
+
+  .tally-light.live {
+    background: var(--tally);
+    box-shadow: 0 0 10px 2px rgba(255,77,46,0.6);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  h1 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin: 0;
+  }
+
+  header .sub {
+    font-size: 12px;
+    color: var(--dim);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .field-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  input[type="text"], input[type="url"], input[type="number"] {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 13px 14px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  input:focus {
+    border-color: var(--tally-dim);
+  }
+
+  textarea {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 13px 14px;
+    border-radius: 6px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13.5px;
+    outline: none;
+    resize: vertical;
+    min-height: 64px;
+    transition: border-color 0.15s ease;
+  }
+
+  textarea:focus { border-color: var(--tally-dim); }
+
+  .row { margin-bottom: 22px; }
+
+  .row-split {
+    display: grid;
+    grid-template-columns: 1fr 140px;
+    gap: 16px;
+  }
+
+  @media (max-width: 540px) {
+    .row-split {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .vertical-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    flex-wrap: wrap;
+  }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+    flex: 1;
+    min-width: 220px;
+  }
+
+  .checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--tally);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  select#verticalMode {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  select#verticalMode:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  button.cut-btn {
+    width: 100%;
+    background: var(--tally);
+    color: #100000;
+    border: none;
+    padding: 15px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.1s ease;
+  }
+
+  button.cut-btn:hover { filter: brightness(1.1); }
+  button.cut-btn:active { transform: scale(0.99); }
+  button.cut-btn:disabled {
+    background: var(--line);
+    color: var(--dim);
+    cursor: not-allowed;
+    filter: none;
+  }
+
+  .status {
+    margin-top: 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    color: var(--dim);
+    display: none;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .status.show { display: flex; }
+
+  .spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--line);
+    border-top-color: var(--tally);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-box {
+    display: none;
+    margin-top: 18px;
+    padding: 14px 16px;
+    border: 1px solid var(--tally-dim);
+    background: rgba(255,77,46,0.06);
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    color: #ffb3a0;
+    word-break: break-word;
+    line-height: 1.4;
+  }
+
+  .results {
+    margin-top: 48px;
+  }
+
+  .results-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 10px;
+  }
+
+  .clip-card {
+    display: grid;
+    grid-template-columns: 42px 1fr auto;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 4px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  @media (max-width: 600px) {
+    .clip-card {
+      grid-template-columns: 36px 1fr;
+    }
+    .clip-actions {
+      grid-column: 1 / -1;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+  }
+
+  .clip-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--tally);
+    font-weight: 700;
+  }
+
+  .clip-title {
+    font-size: 14.5px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+
+  .clip-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    color: var(--dim);
+  }
+
+  .clip-reason {
+    font-size: 12.5px;
+    color: var(--dim);
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+
+  .clip-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .clip-actions a {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    text-decoration: none;
+    color: var(--text);
+    border: 1px solid var(--line);
+    padding: 8px 12px;
+    border-radius: 5px;
+    white-space: nowrap;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+
+  .clip-actions a:hover {
+    border-color: var(--tally-dim);
+    background: rgba(255,255,255,0.02);
+  }
+
+  video.preview {
+    width: 100%;
+    grid-column: 1 / -1;
+    margin-top: 10px;
+    border-radius: 6px;
+    max-height: 420px;
+    display: none;
+    background: #000;
+  }
+
+  video.preview-vertical {
+    width: auto;
+    max-width: 240px;
+    max-height: 480px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <span class="tally-light" id="tallyLight"></span>
+      <h1>CLIP BAY</h1>
+    </div>
+    <span class="sub">local · gemini-assisted</span>
+  </header>
+
+  <form id="clipForm">
+    <div class="row">
+      <label class="field-label" for="url">YouTube VOD link</label>
+      <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=..." required autocomplete="off" spellcheck="false">
+    </div>
+
+    <div class="row row-split">
+      <div>
+        <label class="field-label" for="instructions">What to look for (optional)</label>
+        <textarea id="instructions" placeholder="e.g. focus on funny reactions and arguments, skip the intro"></textarea>
+      </div>
+      <div>
+        <label class="field-label" for="numClips">Max clips</label>
+        <input type="number" id="numClips" value="12" min="1" max="30">
+      </div>
+    </div>
+
+    <div class="row vertical-row">
+      <label class="checkbox-label">
+        <input type="checkbox" id="verticalToggle">
+        <span>Also create 9:16 vertical versions (for Shorts/Reels/TikTok)</span>
+      </label>
+      <select id="verticalMode" disabled>
+        <option value="blur">Blurred background (recommended)</option>
+        <option value="crop">Center crop</option>
+      </select>
+    </div>
+
+    <div class="row vertical-row">
+      <label class="checkbox-label">
+        <input type="checkbox" id="captionsToggle">
+        <span>Burn in captions</span>
+      </label>
+    </div>
+
+    <div class="row">
+      <label class="field-label" for="watermarkText">Watermark text (optional)</label>
+      <input type="text" id="watermarkText" placeholder="@yourchannel" maxlength="60">
+    </div>
+
+    <button type="submit" class="cut-btn" id="submitBtn">Find &amp; cut clips</button>
+
+    <div class="status" id="statusBox">
+      <span class="spinner"></span>
+      <span id="statusText">Starting…</span>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+  </form>
+
+  <div class="results" id="results" style="display:none;">
+    <div class="results-head" id="resultsHead">Clips</div>
+    <div id="clipList"></div>
+  </div>
+</div>
+
+<script>
+const form = document.getElementById('clipForm');
+const submitBtn = document.getElementById('submitBtn');
+const statusBox = document.getElementById('statusBox');
+const statusText = document.getElementById('statusText');
+const errorBox = document.getElementById('errorBox');
+const results = document.getElementById('results');
+const resultsHead = document.getElementById('resultsHead');
+const clipList = document.getElementById('clipList');
+const tallyLight = document.getElementById('tallyLight');
+const verticalToggle = document.getElementById('verticalToggle');
+const verticalMode = document.getElementById('verticalMode');
+
+verticalToggle.addEventListener('change', () => {
+  verticalMode.disabled = !verticalToggle.checked;
+});
+
+let pollTimer = null;
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const url = document.getElementById('url').value.trim();
+  const maxClips = parseInt(document.getElementById('numClips').value, 10) || 12;
+  const instructions = document.getElementById('instructions').value.trim();
+  const vertical = verticalToggle.checked;
+  const verticalModeValue = verticalMode.value;
+  const captions = document.getElementById('captionsToggle').checked;
+  const watermarkText = document.getElementById('watermarkText').value.trim();
+
+  if (!url) {
+    showError('Please enter a YouTube video URL.');
+    return;
+  }
+
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+
+  submitBtn.disabled = true;
+  errorBox.style.display = 'none';
+  results.style.display = 'none';
+  statusBox.classList.add('show');
+  tallyLight.classList.add('live');
+  statusText.textContent = 'Connecting…';
+
+  try {
+    const res = await fetch('/api/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url,
+        max_clips: maxClips,
+        instructions,
+        vertical,
+        vertical_mode: verticalModeValue,
+        captions,
+        watermark_text: watermarkText
+      })
+    });
+
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error(`Server returned status ${res.status}`);
+    }
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to start clipping job.');
+    }
+
+    pollStatus(data.job_id);
+  } catch (err) {
+    statusBox.classList.remove('show');
+    tallyLight.classList.remove('live');
+    submitBtn.disabled = false;
+    showError(err.message);
+  }
+});
+
+function pollStatus(jobId) {
+  let consecutiveErrors = 0;
+
+  pollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/status/${encodeURIComponent(jobId)}`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Status request failed (${res.status})`);
+      }
+
+      const job = await res.json();
+      consecutiveErrors = 0;
+
+      let text = job.detail || job.stage || 'Working…';
+      statusText.textContent = text;
+
+      if (job.done) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+        statusBox.classList.remove('show');
+        tallyLight.classList.remove('live');
+        submitBtn.disabled = false;
+
+        if (job.error) {
+          showError(job.error);
+        } else if (job.result && job.result.clips) {
+          renderClips(jobId, job.result);
+        } else {
+          showError('No clips were generated.');
+        }
+      }
+    } catch (err) {
+      consecutiveErrors++;
+      if (consecutiveErrors >= 5) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+        statusBox.classList.remove('show');
+        tallyLight.classList.remove('live');
+        submitBtn.disabled = false;
+        showError(`Lost connection to server: ${err.message}`);
+      }
+    }
+  }, 1200);
+}
+
+function showError(message) {
+  errorBox.textContent = 'Error: ' + message;
+  errorBox.style.display = 'block';
+}
+
+function renderClips(jobId, data) {
+  const clips = data.clips || [];
+  const videoTitle = data.video_title || 'Video';
+
+  resultsHead.textContent = `${clips.length} clip${clips.length === 1 ? '' : 's'} from "${videoTitle}"`;
+  clipList.innerHTML = '';
+
+  if (clips.length === 0) {
+    showError('No clip timestamps were found in the selected video.');
+    return;
+  }
+
+  clips.forEach((clip, i) => {
+    const clipUrl = `/clips/${encodeURIComponent(jobId)}/${encodeURIComponent(clip.filename)}`;
+    const hasVertical = Boolean(clip.vertical_filename);
+    const verticalUrl = hasVertical ? `/clips/${encodeURIComponent(jobId)}/${encodeURIComponent(clip.vertical_filename)}` : null;
+
+    const card = document.createElement('div');
+    card.className = 'clip-card';
+    card.innerHTML = `
+      <div class="clip-num">${String(i + 1).padStart(2, '0')}</div>
+      <div>
+        <div class="clip-title">${escapeHtml(clip.title || `Clip ${i + 1}`)}</div>
+        <div class="clip-meta">${escapeHtml(clip.start)} – ${escapeHtml(clip.end)}</div>
+        ${clip.reason ? `<div class="clip-reason">${escapeHtml(clip.reason)}</div>` : ''}
+      </div>
+      <div class="clip-actions">
+        <a href="#" class="preview-toggle" role="button">Preview</a>
+        <a href="${clipUrl}" download="${escapeHtml(clip.filename)}">Download</a>
+        ${hasVertical ? `<a href="#" class="preview-toggle-vertical" role="button">Preview 9:16</a>` : ''}
+        ${hasVertical ? `<a href="${verticalUrl}" download="${escapeHtml(clip.vertical_filename)}">Download 9:16</a>` : ''}
+      </div>
+      <video class="preview" controls playsinline preload="none" src="${clipUrl}"></video>
+      ${hasVertical ? `<video class="preview preview-vertical" controls playsinline preload="none" src="${verticalUrl}"></video>` : ''}
+    `;
+
+    const previewBtn = card.querySelector('.preview-toggle');
+    const video = card.querySelector('video.preview');
+    previewBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const isShown = video.style.display === 'block';
+      video.style.display = isShown ? 'none' : 'block';
+      previewBtn.textContent = isShown ? 'Preview' : 'Hide';
+      if (!isShown) video.play().catch(() => {});
+      else video.pause();
+    });
+
+    if (hasVertical) {
+      const previewVBtn = card.querySelector('.preview-toggle-vertical');
+      const videoV = card.querySelector('video.preview-vertical');
+      previewVBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const isShown = videoV.style.display === 'block';
+        videoV.style.display = isShown ? 'none' : 'block';
+        previewVBtn.textContent = isShown ? 'Preview 9:16' : 'Hide';
+        if (!isShown) videoV.play().catch(() => {});
+        else videoV.pause();
+      });
+    }
+
+    clipList.appendChild(card);
+  });
+
+  results.style.display = 'block';
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables & secrets
+.env
+.env.local
+
+# Job outputs and downloads
+downloads/
+outputs/
+*.mp4
+*.mkv
+*.webm
+*.part
+*.ytdl
+*.srt
+
+# Bundled FFmpeg builds (for git repository cleanliness)
+ffmpeg-*/
+*.zip
+*.tar.gz
+*.7z
+
+# Testing & Linting
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
