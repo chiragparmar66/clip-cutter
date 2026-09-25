@@ -34,4 +34,4 @@ ENV PYTHONUNBUFFERED=1 \
 EXPOSE 5000
 
 # Run with Gunicorn using threads for concurrent status polling
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 2 --threads 4 --timeout 600 app:app"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 1 --threads 4 --timeout 600 app:app"]
