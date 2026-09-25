@@ -20,6 +20,7 @@ RETRY_DELAY_SECONDS = 3
 
 def get_gemini_client():
     """Returns an authenticated Gemini client or raises a clear ValueError if the key is missing."""
+
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
 
     if not api_key or api_key == "your_gemini_api_key_here":
@@ -48,7 +49,6 @@ def _extract_json(text: str):
 
     cleaned = text.strip()
 
-    # If wrapped in markdown fences, extract content within the fences.
     fence_match = re.search(
         r"```(?:json)?\s*([\s\S]*?)\s*```",
         cleaned,
@@ -58,7 +58,6 @@ def _extract_json(text: str):
     if fence_match:
         cleaned = fence_match.group(1).strip()
 
-    # Extract JSON array if conversational text is present.
     array_start = cleaned.find("[")
     array_end = cleaned.rfind("]")
 
@@ -66,7 +65,6 @@ def _extract_json(text: str):
         cleaned = cleaned[array_start : array_end + 1]
 
     else:
-        # Otherwise try to extract a JSON object.
         obj_start = cleaned.find("{")
         obj_end = cleaned.rfind("}")
 
@@ -84,15 +82,12 @@ def _extract_json(text: str):
             f"Raw response snippet: {preview}"
         ) from e
 
-    # If the response is an object wrapping a list,
-    # extract the list.
     if isinstance(data, dict):
 
         for key in ["clips", "moments", "highlights", "results"]:
             if key in data and isinstance(data[key], list):
                 return data[key]
 
-        # If the single object itself is a clip.
         if "start" in data and "end" in data:
             return [data]
 
@@ -111,15 +106,6 @@ def _extract_json(text: str):
 def validate_clip_moments(moments: list, max_clips: int = 12) -> list:
     """
     Validates and sanitizes AI-generated clip timestamps and metadata.
-
-    Rules:
-    - Start and end timestamps must exist.
-    - Timestamps must be non-negative.
-    - Start must be before end.
-    - Clip duration must be at least 1 second.
-    - Titles and reasons are converted to safe strings.
-    - Captions are validated when present.
-    - Maximum clip count is respected.
     """
 
     if not isinstance(moments, list):
@@ -189,7 +175,6 @@ def validate_clip_moments(moments: list, max_clips: int = 12) -> list:
             "reason": reason,
         }
 
-        # Validate captions if present.
         raw_captions = item.get("captions")
 
         if isinstance(raw_captions, list):
@@ -245,8 +230,6 @@ def find_clip_moments(
     """
     Passes the YouTube URL directly to Gemini and asks it to identify
     clip-worthy moments.
-
-    Returns a validated list of clip dictionaries.
 
     Gemini transient errors such as 429/500/502/503/504 are retried
     using exponential backoff.
@@ -341,14 +324,6 @@ Format:
 
     last_error = None
 
-    # These are transient errors where retrying makes sense.
-    #
-    # 408 = request timeout
-    # 429 = rate limit
-    # 500 = internal server error
-    # 502 = bad gateway
-    # 503 = service unavailable / temporary overload
-    # 504 = gateway timeout
     retryable_codes = {
         408,
         429,
@@ -368,6 +343,12 @@ Format:
                 f"using model {model_name}"
             )
 
+            request_start = time.monotonic()
+
+            logger.info(
+                "Sending YouTube video URL to Gemini..."
+            )
+
             response = client.models.generate_content(
                 model=model_name,
                 contents=types.Content(
@@ -382,16 +363,49 @@ Format:
                         ),
                     ]
                 ),
+                config=types.GenerateContentConfig(
+                    automatic_function_calling=(
+                        types.AutomaticFunctionCallingConfig(
+                            disable=True
+                        )
+                    )
+                ),
+            )
+
+            request_duration = time.monotonic() - request_start
+
+            logger.info(
+                f"Gemini response received after "
+                f"{request_duration:.2f}s"
             )
 
             raw_text = response.text or ""
 
+            logger.info(
+                f"Gemini response text length: {len(raw_text)} characters"
+            )
+
+            if not raw_text.strip():
+                logger.error(
+                    "Gemini returned an empty response."
+                )
+                raise ValueError(
+                    "Gemini returned an empty response."
+                )
+
             raw_moments = _extract_json(raw_text)
 
-            return validate_clip_moments(
+            validated = validate_clip_moments(
                 raw_moments,
                 max_clips=max_clips,
             )
+
+            logger.info(
+                f"Gemini analysis completed successfully: "
+                f"{len(validated)} valid clips found."
+            )
+
+            return validated
 
         except genai_errors.ClientError as e:
 
@@ -403,7 +417,12 @@ Format:
                 None,
             )
 
-            # Retry only temporary/transient API errors.
+            logger.error(
+                f"Gemini ClientError after "
+                f"{time.monotonic() - request_start:.2f}s: "
+                f"code={error_code}, error={e}"
+            )
+
             if (
                 error_code in retryable_codes
                 and attempt < max_retries
@@ -423,21 +442,18 @@ Format:
 
                 continue
 
-            # Permanent error or final retry exhausted.
-            logger.error(
-                f"Gemini request failed with code "
-                f"{error_code} on attempt "
-                f"{attempt}/{max_retries}: {e}"
-            )
-
             raise
 
         except Exception as e:
 
             last_error = e
 
-            # Network/SDK-level temporary errors may not always
-            # appear as ClientError, so give them a limited retry.
+            logger.error(
+                f"Gemini analysis exception after "
+                f"{time.monotonic() - request_start:.2f}s: "
+                f"{type(e).__name__}: {e}"
+            )
+
             if attempt < max_retries:
 
                 delay = RETRY_DELAY_SECONDS * (
@@ -445,19 +461,14 @@ Format:
                 )
 
                 logger.warning(
-                    f"Gemini request encountered a temporary "
-                    f"error (attempt {attempt}/{max_retries}) — "
-                    f"retrying in {delay}s: {e}"
+                    f"Gemini request encountered an error "
+                    f"(attempt {attempt}/{max_retries}) — "
+                    f"retrying in {delay}s..."
                 )
 
                 time.sleep(delay)
 
                 continue
-
-            logger.error(
-                f"Gemini request failed after "
-                f"{attempt}/{max_retries} attempts: {e}"
-            )
 
             raise
 
