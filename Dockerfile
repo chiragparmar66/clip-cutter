@@ -32,35 +32,45 @@ RUN curl -fsSL \
 RUN deno --version
 
 # ------------------------------------------------------------------------------
-# Create application user
+# Application user
 # ------------------------------------------------------------------------------
 
 RUN useradd -m -u 1000 appuser
 
 # ------------------------------------------------------------------------------
-# Install Python dependencies
+# Python dependencies
 # ------------------------------------------------------------------------------
 
 WORKDIR /app
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade pip \
+    && python -m pip install --no-cache-dir -r requirements.txt
 
 # ------------------------------------------------------------------------------
-# Install bgutil server
-#
-# Plugin is installed through pip above.
-# Server is kept at the exact same version.
+# Verify Python packages
+# ------------------------------------------------------------------------------
+
+RUN python -c "import yt_dlp; print('yt-dlp:', yt_dlp.version.__version__)"
+
+RUN python -m pip show bgutil-ytdlp-pot-provider
+
+# ------------------------------------------------------------------------------
+# Install bgutil-ytdlp-pot-provider server
 # ------------------------------------------------------------------------------
 
 WORKDIR /opt
 
 RUN git clone \
-    --single-branch \
+    --depth 1 \
     --branch 2.0.0 \
     https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git \
     bgutil-ytdlp-pot-provider
+
+# ------------------------------------------------------------------------------
+# Install bgutil server dependencies
+# ------------------------------------------------------------------------------
 
 WORKDIR /opt/bgutil-ytdlp-pot-provider/server
 
@@ -69,12 +79,10 @@ RUN deno install \
     --frozen
 
 # ------------------------------------------------------------------------------
-# Verify versions
+# Verify bgutil server files
 # ------------------------------------------------------------------------------
 
-RUN python -c "import yt_dlp; print('yt-dlp:', yt_dlp.version.__version__)"
-
-RUN python -c "import bgutil_ytdlp_pot_provider; print('bgutil Python plugin: OK')"
+RUN test -f /opt/bgutil-ytdlp-pot-provider/server/src/main.ts
 
 # ------------------------------------------------------------------------------
 # Application
@@ -85,10 +93,10 @@ WORKDIR /app
 COPY . .
 
 # ------------------------------------------------------------------------------
-# Runtime directories
+# Runtime directories and permissions
 # ------------------------------------------------------------------------------
 
-RUN mkdir -p downloads outputs \
+RUN mkdir -p /app/downloads /app/outputs \
     && chown -R appuser:appuser /app \
     && chown -R appuser:appuser /opt/bgutil-ytdlp-pot-provider
 
@@ -103,7 +111,7 @@ ENV PYTHONUNBUFFERED=1 \
 EXPOSE 5000
 
 # ------------------------------------------------------------------------------
-# Run
+# Runtime
 # ------------------------------------------------------------------------------
 
 USER appuser
