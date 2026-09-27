@@ -146,6 +146,7 @@ def download_video(
         "merge_output_format": "mp4",
 
         "quiet": False,
+        "verbose": True,
         "no_warnings": False,
         "noplaylist": True,
 
