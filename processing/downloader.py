@@ -168,6 +168,7 @@ def download_video(
             )
 
     ydl_opts = {
+<<<<<<< Updated upstream
         "format": format_str,
         "outtmpl": output_template,
         "merge_output_format": "mp4",
@@ -183,6 +184,22 @@ def download_video(
         # Send yt-dlp logs through our application logger.
         "logger": logger,
     }
+=======
+    "format": format_str,
+    "outtmpl": output_template,
+    "merge_output_format": "mp4",
+    "quiet": True,
+    "no_warnings": True,
+    "noplaylist": True,
+    "progress_hooks": [hook],
+
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["mweb", "web_embedded", "tv"],
+        },
+    },
+}
+>>>>>>> Stashed changes
 
     logger.info(
         "yt-dlp options configured. "
