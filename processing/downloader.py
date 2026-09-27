@@ -20,7 +20,7 @@ YOUTUBE_URL_REGEX = re.compile(
 
 
 def validate_youtube_url(url: str) -> str:
-    """Validates that a URL is a syntactically valid YouTube video link."""
+    """Validate that a URL is a syntactically valid YouTube video link."""
 
     if not url or not isinstance(url, str):
         raise ValueError("No URL provided.")
@@ -41,7 +41,7 @@ def validate_youtube_url(url: str) -> str:
 
 
 def _cleanup_partial_files(download_dir: str, job_id: str):
-    """Removes leftover incomplete download artifacts."""
+    """Remove leftover incomplete download artifacts."""
 
     for pattern in [
         f"{job_id}.*",
@@ -54,7 +54,6 @@ def _cleanup_partial_files(download_dir: str, job_id: str):
             try:
                 if os.path.exists(filepath):
                     os.remove(filepath)
-
             except Exception as e:
                 logger.warning(
                     f"Could not remove partial file "
@@ -69,10 +68,10 @@ def download_video(
     progress_callback=None,
 ):
     """
-    Downloads a YouTube video using yt-dlp.
+    Download a YouTube video using yt-dlp.
 
     Returns:
-        (local_file_path, video_title)
+        tuple[str, str]: (local_file_path, video_title)
     """
 
     clean_url = validate_youtube_url(url)
@@ -98,13 +97,11 @@ def download_video(
     ).strip()
 
     if max_h and max_h.isdigit():
-
         format_str = (
             f"bv*[height<={max_h}]+ba/"
             f"b[height<={max_h}]/"
             f"bv*+ba/b"
         )
-
     else:
         format_str = "bv*+ba/b"
 
@@ -113,6 +110,7 @@ def download_video(
     )
 
     def hook(d):
+        """Handle yt-dlp download progress."""
 
         if not progress_callback:
             return
@@ -120,7 +118,6 @@ def download_video(
         status = d.get("status")
 
         if status == "downloading":
-
             total = (
                 d.get("total_bytes")
                 or d.get("total_bytes_estimate")
@@ -160,21 +157,22 @@ def download_video(
             )
 
         elif status == "finished":
-
             progress_callback(
                 100,
                 "",
                 "",
             )
 
+    # ------------------------------------------------------------------
+    # yt-dlp configuration
+    # ------------------------------------------------------------------
+
     ydl_opts = {
-<<<<<<< Updated upstream
         "format": format_str,
         "outtmpl": output_template,
         "merge_output_format": "mp4",
 
-        # TEMPORARY DIAGNOSTIC MODE
-        # We need the real YouTube/yt-dlp error in Render logs.
+        # Keep logs enabled so Render shows the real yt-dlp error.
         "quiet": False,
         "no_warnings": False,
 
@@ -183,23 +181,18 @@ def download_video(
 
         # Send yt-dlp logs through our application logger.
         "logger": logger,
-    }
-=======
-    "format": format_str,
-    "outtmpl": output_template,
-    "merge_output_format": "mp4",
-    "quiet": True,
-    "no_warnings": True,
-    "noplaylist": True,
-    "progress_hooks": [hook],
 
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["mweb", "web_embedded", "tv"],
+        # YouTube client configuration.
+        "extractor_args": {
+            "youtube": {
+                "player_client": [
+                    "mweb",
+                    "web_embedded",
+                    "tv",
+                ],
+            },
         },
-    },
-}
->>>>>>> Stashed changes
+    }
 
     logger.info(
         "yt-dlp options configured. "
@@ -207,7 +200,6 @@ def download_video(
     )
 
     try:
-
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
             info = ydl.extract_info(
@@ -298,31 +290,25 @@ def download_video(
 
         msg = str(e)
 
-        # IMPORTANT:
-        # Log the REAL yt-dlp error before converting it.
+        # Log the complete yt-dlp error.
         logger.error(
             f"FULL yt-dlp DownloadError for job "
             f"{job_id}: {msg}"
         )
 
         if "Private video" in msg:
-
             raise RuntimeError(
                 "Cannot download: This video is private."
             ) from e
 
         if "Video unavailable" in msg:
-
             raise RuntimeError(
                 "Cannot download: This video is unavailable."
             ) from e
 
-        # DO NOT convert this into "age restricted".
-        # We want to see exactly what YouTube returned.
         if "Sign in to confirm" in msg:
-
             raise RuntimeError(
-                f"YouTube authentication/bot verification "
+                "YouTube authentication/bot verification "
                 f"required. Raw yt-dlp error: {msg}"
             ) from e
 
