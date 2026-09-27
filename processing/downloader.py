@@ -7,10 +7,12 @@ import re
 import yt_dlp
 from yt_dlp.utils import DownloadError, ExtractorError, GeoRestrictedError
 
+
 logger = logging.getLogger("clip_cutter.downloader")
 
 MAX_HEIGHT = os.environ.get("MAX_HEIGHT", "480")
 COOKIES_FILE = "/tmp/youtube_cookies.txt"
+
 
 YOUTUBE_URL_REGEX = re.compile(
     r"^(https?://)?"
@@ -23,10 +25,14 @@ YOUTUBE_URL_REGEX = re.compile(
 
 def _prepare_cookies():
     """
-    Decode YOUTUBE_COOKIES_B64 from Render environment
-    into a temporary cookies.txt file.
+    Decode YOUTUBE_COOKIES_B64 from the Render environment
+    and create a temporary Netscape cookies file.
     """
-    cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
+
+    cookies_b64 = os.environ.get(
+        "YOUTUBE_COOKIES_B64",
+        "",
+    ).strip()
 
     if not cookies_b64:
         logger.warning(
@@ -41,12 +47,22 @@ def _prepare_cookies():
         )
 
         if not cookie_data:
-            raise ValueError("Decoded cookie file is empty.")
+            raise ValueError(
+                "Decoded cookie file is empty."
+            )
 
-        with open(COOKIES_FILE, "wb") as f:
-            f.write(cookie_data)
+        with open(
+            COOKIES_FILE,
+            "wb",
+        ) as cookie_file:
+            cookie_file.write(cookie_data)
 
-        os.chmod(COOKIES_FILE, 0o600)
+        # Restrict permissions because this file contains
+        # authentication/session information.
+        os.chmod(
+            COOKIES_FILE,
+            0o600,
+        )
 
         logger.info(
             "YouTube cookies loaded successfully."
@@ -64,7 +80,9 @@ def _prepare_cookies():
 
 def validate_youtube_url(url: str) -> str:
     if not url or not isinstance(url, str):
-        raise ValueError("No URL provided.")
+        raise ValueError(
+            "No URL provided."
+        )
 
     trimmed = url.strip()
 
@@ -75,13 +93,17 @@ def validate_youtube_url(url: str) -> str:
         ):
             raise ValueError(
                 f"Invalid YouTube URL: {trimmed}. "
-                "Please provide a valid youtube.com or youtu.be link."
+                "Please provide a valid "
+                "youtube.com or youtu.be link."
             )
 
     return trimmed
 
 
-def _cleanup_partial_files(download_dir: str, job_id: str):
+def _cleanup_partial_files(
+    download_dir: str,
+    job_id: str,
+):
     patterns = [
         f"{job_id}.*",
         f"{job_id}.*.part",
@@ -90,11 +112,15 @@ def _cleanup_partial_files(download_dir: str, job_id: str):
 
     for pattern in patterns:
         for filepath in glob.glob(
-            os.path.join(download_dir, pattern)
+            os.path.join(
+                download_dir,
+                pattern,
+            )
         ):
             try:
                 if os.path.exists(filepath):
                     os.remove(filepath)
+
             except Exception as e:
                 logger.warning(
                     f"Could not remove partial file "
@@ -115,7 +141,10 @@ def download_video(
         f"{job_id}: {clean_url}"
     )
 
-    os.makedirs(download_dir, exist_ok=True)
+    os.makedirs(
+        download_dir,
+        exist_ok=True,
+    )
 
     output_template = os.path.join(
         download_dir,
@@ -127,14 +156,25 @@ def download_video(
         MAX_HEIGHT,
     ).strip()
 
+    # ---------------------------------------------------------
+    # Format selection
+    #
+    # Prefer an already-merged format within MAX_HEIGHT.
+    # If unavailable, fall back to best available format.
+    # Finally, allow yt-dlp's best video+audio combination.
+    # ---------------------------------------------------------
+
     if max_h and max_h.isdigit():
         format_str = (
-            f"bv*[height<={max_h}]+ba/"
-            f"b[height<={max_h}]/"
+            f"best[height<={max_h}]/"
+            f"best/"
             f"bv*+ba/b"
         )
     else:
-        format_str = "bv*+ba/b"
+        format_str = (
+            "best/"
+            "bv*+ba/b"
+        )
 
     logger.info(
         f"yt-dlp format: {format_str}"
@@ -148,12 +188,17 @@ def download_video(
 
     if cookies_file:
         logger.info(
-            "yt-dlp will use authenticated YouTube cookies."
+            "yt-dlp will use authenticated "
+            "YouTube cookies."
         )
     else:
         logger.warning(
             "yt-dlp will run without YouTube cookies."
         )
+
+    # ---------------------------------------------------------
+    # Progress hook
+    # ---------------------------------------------------------
 
     def hook(d):
         if not progress_callback:
@@ -162,6 +207,7 @@ def download_video(
         status = d.get("status")
 
         if status == "downloading":
+
             total = (
                 d.get("total_bytes")
                 or d.get("total_bytes_estimate")
@@ -202,19 +248,28 @@ def download_video(
             )
 
         elif status == "finished":
+
             progress_callback(
                 100,
                 "",
                 "",
             )
 
+    # ---------------------------------------------------------
+    # yt-dlp configuration
+    # ---------------------------------------------------------
+
     ydl_opts = {
         "format": format_str,
+
         "outtmpl": output_template,
+
         "merge_output_format": "mp4",
 
         "quiet": False,
+
         "verbose": True,
+
         "no_warnings": False,
 
         "noplaylist": True,
@@ -225,7 +280,8 @@ def download_video(
 
         "logger": logger,
 
-        # Keep the provider/client setup.
+        # Keep the current client configuration that
+        # successfully got us past the previous bot/403 stage.
         "extractor_args": {
             "youtube": {
                 "player_client": [
@@ -236,7 +292,7 @@ def download_video(
     }
 
     # ---------------------------------------------------------
-    # Add cookies only when available
+    # Add cookies when available
     # ---------------------------------------------------------
 
     if cookies_file:
@@ -247,8 +303,15 @@ def download_video(
         f"{job_id}..."
     )
 
+    # ---------------------------------------------------------
+    # Download
+    # ---------------------------------------------------------
+
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+
+        with yt_dlp.YoutubeDL(
+            ydl_opts
+        ) as ydl:
 
             logger.info(
                 "Calling yt-dlp extract_info()..."
@@ -270,22 +333,39 @@ def download_video(
                     "video information."
                 )
 
-            filepath = ydl.prepare_filename(info)
+            # -------------------------------------------------
+            # Determine downloaded filename
+            # -------------------------------------------------
 
-            base, _ = os.path.splitext(filepath)
+            filepath = ydl.prepare_filename(
+                info
+            )
 
-            mp4_path = base + ".mp4"
+            base, _ = os.path.splitext(
+                filepath
+            )
 
-            if os.path.exists(mp4_path):
+            mp4_path = (
+                base + ".mp4"
+            )
+
+            if os.path.exists(
+                mp4_path
+            ):
                 filepath = mp4_path
+
+            # -------------------------------------------------
+            # Verify downloaded file
+            # -------------------------------------------------
 
             if (
                 not os.path.exists(filepath)
                 or os.path.getsize(filepath) == 0
             ):
                 raise RuntimeError(
-                    "Downloaded video file was not created "
-                    f"or is empty at {filepath}"
+                    "Downloaded video file was not "
+                    "created or is empty at "
+                    f"{filepath}"
                 )
 
             title = info.get(
@@ -304,6 +384,10 @@ def download_video(
 
         return filepath, title
 
+    # ---------------------------------------------------------
+    # Geo restriction
+    # ---------------------------------------------------------
+
     except GeoRestrictedError as e:
 
         logger.error(
@@ -321,6 +405,10 @@ def download_video(
             "and cannot be downloaded."
         ) from e
 
+    # ---------------------------------------------------------
+    # Extraction error
+    # ---------------------------------------------------------
+
     except ExtractorError as e:
 
         logger.error(
@@ -337,6 +425,10 @@ def download_video(
             f"Failed to extract video: {e}"
         ) from e
 
+    # ---------------------------------------------------------
+    # Download error
+    # ---------------------------------------------------------
+
     except DownloadError as e:
 
         _cleanup_partial_files(
@@ -352,12 +444,14 @@ def download_video(
         )
 
         if "Private video" in msg:
+
             raise RuntimeError(
                 "Cannot download: "
                 "This video is private."
             ) from e
 
         if "Video unavailable" in msg:
+
             raise RuntimeError(
                 "Cannot download: "
                 "This video is unavailable."
@@ -368,17 +462,41 @@ def download_video(
             or "not a bot" in msg
             or "authentication" in msg.lower()
             or "LOGIN_REQUIRED" in msg
-            or "HTTP Error 403" in msg
         ):
+
             raise RuntimeError(
                 "YouTube authentication/bot "
                 "verification required. "
                 f"Raw yt-dlp error: {msg}"
             ) from e
 
+        if (
+            "Requested format is not available"
+            in msg
+        ):
+
+            raise RuntimeError(
+                "YouTube did not provide a "
+                "compatible video format for "
+                "the current client/cookies. "
+                f"Raw yt-dlp error: {msg}"
+            ) from e
+
+        if "HTTP Error 403" in msg:
+
+            raise RuntimeError(
+                "YouTube rejected the media "
+                "request with HTTP 403. "
+                f"Raw yt-dlp error: {msg}"
+            ) from e
+
         raise RuntimeError(
             f"Video download failed: {msg}"
         ) from e
+
+    # ---------------------------------------------------------
+    # Unexpected error
+    # ---------------------------------------------------------
 
     except Exception as e:
 
