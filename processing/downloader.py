@@ -279,16 +279,6 @@ def download_video(
         ],
 
         "logger": logger,
-
-        # Keep the current client configuration that
-        # successfully got us past the previous bot/403 stage.
-        "extractor_args": {
-            "youtube": {
-                "player_client": [
-                    "tv",
-                ],
-            },
-        },
     }
 
     # ---------------------------------------------------------
