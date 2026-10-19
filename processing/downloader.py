@@ -278,14 +278,14 @@ def download_video(
             hook
         ],
 
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["ios", "android", "web"]
-            },
-            "youtubepot-bgutilhttp": {
-                "base_url": ["http://127.0.0.1:4416"]
-            }
-        },
+"extractor_args": {
+    "youtube": {
+        "player_client": ["mweb"]
+    },
+    "youtubepot-bgutilhttp": {
+        "base_url": ["http://127.0.0.1:4416"]
+    }
+},
 
         "logger": logger,
     }
