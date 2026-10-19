@@ -7,7 +7,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, after_this_request
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
@@ -41,24 +41,18 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
-# Job retention TTL in hours
+# Single-process lock: Only one active pipeline at a time on the server
+server_process_lock = threading.Lock()
+is_server_busy = False
+current_active_job_id = None
+
+# Job retention TTL in hours (fallback)
 JOB_TTL_HOURS = float(
     os.environ.get("JOB_TTL_HOURS", "24")
 )
 
 
 # In-memory job status store
-# Fine for local/single-instance use.
-#
-# job_id -> {
-#     "stage": str,
-#     "detail": str,
-#     "percent": float|None,
-#     "done": bool,
-#     "error": str|None,
-#     "result": dict|None,
-#     "created_at": float
-# }
 jobs = {}
 
 jobs_lock = threading.Lock()
@@ -511,6 +505,21 @@ def run_job(
             watermark_png=watermark_png,
         )
 
+        # Delete main downloaded video immediately from server to save disk space
+        if video_path and os.path.exists(video_path):
+            try:
+                os.remove(video_path)
+                logger.info(f"Source video deleted from server: {video_path}")
+            except Exception as e:
+                logger.warning(f"Could not delete source video {video_path}: {e}")
+
+        # Delete temporary watermark file if generated
+        if watermark_png and os.path.exists(watermark_png):
+            try:
+                os.remove(watermark_png)
+            except Exception:
+                pass
+
         if not clips:
 
             set_status(
@@ -554,6 +563,13 @@ def run_job(
         )
 
     finally:
+
+        # Release server single-process state
+        global is_server_busy, current_active_job_id
+        with server_process_lock:
+            is_server_busy = False
+            current_active_job_id = None
+        logger.info(f"Server process released. Ready for next video.")
 
         # Guarantee done=True is set if an unexpected
         # unhandled crash occurred.
@@ -645,6 +661,20 @@ def start():
         data.get("watermark_text") or ""
     ).strip()[:60]
 
+    global is_server_busy, current_active_job_id
+    with server_process_lock:
+        if is_server_busy:
+            return jsonify(
+                {
+                    "error": "The server is currently processing another video. Only one video can be processed at a time. Please wait a moment and try again.",
+                    "active_job_id": current_active_job_id,
+                }
+            ), 429
+
+        is_server_busy = True
+        job_id = uuid.uuid4().hex[:8]
+        current_active_job_id = job_id
+
     # Trigger lightweight cleanup
     # of expired jobs.
     try:
@@ -656,8 +686,6 @@ def start():
         logger.warning(
             f"Error during expired jobs cleanup: {e}"
         )
-
-    job_id = uuid.uuid4().hex[:8]
 
     with jobs_lock:
 
@@ -690,7 +718,7 @@ def start():
     thread.start()
 
     logger.info(
-        f"Started job {job_id} for URL: {url}"
+        f"Started exclusive job {job_id} for URL: {url}"
     )
 
     return jsonify(
@@ -815,6 +843,35 @@ def serve_clip(
                 "error": "Clip not found"
             }
         ), 404
+
+    is_download = request.args.get("download", "0") in ("1", "true")
+
+    if is_download:
+        @after_this_request
+        def remove_file(response):
+            try:
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    logger.info(f"Clip auto-deleted after download: {file_path}")
+
+                    # Check if job_dir is now empty; if so, remove folder
+                    remaining = [
+                        f for f in os.listdir(job_dir)
+                        if not f.startswith(".") and f != "_watermark.png"
+                    ]
+                    if not remaining:
+                        shutil.rmtree(job_dir, ignore_errors=True)
+                        logger.info(f"Cleaned up empty job output directory: {job_dir}")
+            except Exception as e:
+                logger.warning(f"Error auto-deleting downloaded clip {file_path}: {e}")
+            return response
+
+        return send_from_directory(
+            job_dir,
+            filename,
+            as_attachment=True,
+            download_name=filename,
+        )
 
     return send_from_directory(
         job_dir,

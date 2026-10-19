@@ -577,9 +577,9 @@ function renderClips(jobId, data) {
       </div>
       <div class="clip-actions">
         <a href="#" class="preview-toggle" role="button">Preview</a>
-        <a href="${clipUrl}" download="${escapeHtml(clip.filename)}">Download</a>
+        <a href="${clipUrl}?download=1" download="${escapeHtml(clip.filename)}" onclick="this.style.opacity='0.4'; this.style.pointerEvents='none'; this.textContent='Downloaded';">Download</a>
         ${hasVertical ? `<a href="#" class="preview-toggle-vertical" role="button">Preview 9:16</a>` : ''}
-        ${hasVertical ? `<a href="${verticalUrl}" download="${escapeHtml(clip.vertical_filename)}">Download 9:16</a>` : ''}
+        ${hasVertical ? `<a href="${verticalUrl}?download=1" download="${escapeHtml(clip.vertical_filename)}" onclick="this.style.opacity='0.4'; this.style.pointerEvents='none'; this.textContent='Downloaded';">Download 9:16</a>` : ''}
       </div>
       <video class="preview" controls playsinline preload="none" src="${clipUrl}"></video>
       ${hasVertical ? `<video class="preview preview-vertical" controls playsinline preload="none" src="${verticalUrl}"></video>` : ''}
