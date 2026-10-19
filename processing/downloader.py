@@ -8,10 +8,12 @@ import yt_dlp
 from yt_dlp.utils import DownloadError, ExtractorError, GeoRestrictedError
 
 
+import tempfile
+
 logger = logging.getLogger("clip_cutter.downloader")
 
 MAX_HEIGHT = os.environ.get("MAX_HEIGHT", "480")
-COOKIES_FILE = "/tmp/youtube_cookies.txt"
+COOKIES_FILE = os.path.join(tempfile.gettempdir(), "youtube_cookies.txt")
 
 
 YOUTUBE_URL_REGEX = re.compile(
@@ -25,9 +27,14 @@ YOUTUBE_URL_REGEX = re.compile(
 
 def _prepare_cookies():
     """
-    Decode YOUTUBE_COOKIES_B64 from the Render environment
+    Decode YOUTUBE_COOKIES_B64 from the environment (or load from local cookies.txt)
     and create a temporary Netscape cookies file.
     """
+    # 1. First check if a direct cookies.txt exists in the workspace
+    local_cookies = os.path.join(os.getcwd(), "cookies.txt")
+    if os.path.exists(local_cookies) and os.path.getsize(local_cookies) > 0:
+        logger.info(f"Using local cookies file: {local_cookies}")
+        return local_cookies
 
     cookies_b64 = os.environ.get(
         "YOUTUBE_COOKIES_B64",
@@ -41,9 +48,13 @@ def _prepare_cookies():
         return None
 
     try:
+        # Add padding if needed
+        missing_padding = len(cookies_b64) % 4
+        if missing_padding:
+            cookies_b64 += "=" * (4 - missing_padding)
+
         cookie_data = base64.b64decode(
-            cookies_b64,
-            validate=True,
+            cookies_b64
         )
 
         if not cookie_data:
@@ -57,15 +68,13 @@ def _prepare_cookies():
         ) as cookie_file:
             cookie_file.write(cookie_data)
 
-        # Restrict permissions because this file contains
-        # authentication/session information.
-        os.chmod(
-            COOKIES_FILE,
-            0o600,
-        )
+        try:
+            os.chmod(COOKIES_FILE, 0o600)
+        except Exception:
+            pass
 
         logger.info(
-            "YouTube cookies loaded successfully."
+            f"YouTube cookies loaded successfully into {COOKIES_FILE}."
         )
 
         return COOKIES_FILE
@@ -278,14 +287,14 @@ def download_video(
             hook
         ],
 
-"extractor_args": {
-    "youtube": {
-        "player_client": ["mweb"]
-    },
-    "youtubepot-bgutilhttp": {
-        "base_url": ["http://127.0.0.1:4416"]
-    }
-},
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "android", "mweb", "web"]
+            },
+            "youtubepot-bgutilhttp": {
+                "base_url": ["http://127.0.0.1:4416"]
+            }
+        },
 
         "logger": logger,
     }
